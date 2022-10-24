@@ -2,7 +2,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using static UnityEngine.ParticleSystem;
 
 [RequireComponent(typeof(MeshRenderer), typeof(MeshFilter))]
 public class Cloth : MonoBehaviour
@@ -11,7 +10,7 @@ public class Cloth : MonoBehaviour
     [SerializeField] uint height;
     [SerializeField] Vector2 cellSize;
 
-    [SerializeField] ClothParticle[] particles;
+    public ClothParticle[] particles;
     [HideInInspector] public Mesh mesh;
 
     public int GetVertexIndex(int _cellX, int _cellY)
@@ -28,6 +27,7 @@ public class Cloth : MonoBehaviour
     public void GenerateGrid()
     {
         Vector3[] verticies = new Vector3[(width + 1) * (height + 1)];
+        Vector2[] uvs = new Vector2[(width + 1) * (height + 1)];
         int[] indices = new int[width * height * 6];
         
         //Destroy Particles
@@ -41,10 +41,13 @@ public class Cloth : MonoBehaviour
         for (int cellY = 0; cellY < height + 1; cellY++)
             for (int cellX = 0; cellX < width + 1; cellX++)
             {
+                int vertexIndex = GetVertexIndex(cellX, cellY);
+
                 //Set vertex position
                 Vector3 vertexPosition = new Vector3(cellX*cellSize.x, -cellY*cellSize.y);
                 vertexPosition += new Vector3(-width*cellSize.x, height*cellSize.y) / 2.0f;
-                verticies[GetVertexIndex(cellX, cellY)] = vertexPosition;
+                verticies[vertexIndex] = vertexPosition;
+                uvs[vertexIndex] = new Vector2(cellX/(width+1.0f), cellY/(height+1.0f));
 
                 //Create a game object to control the position of the vertex
                 GameObject vertexGameObject = new GameObject("ClothParticle" + cellX + "-" + cellY);
@@ -53,7 +56,7 @@ public class Cloth : MonoBehaviour
 
                 //Give the created gameObject the ClothParticle script and set its properties
                 ClothParticle vertexParticle = vertexGameObject.AddComponent<ClothParticle>();
-                particles[GetVertexIndex(cellX, cellY)] = vertexParticle;
+                particles[vertexIndex] = vertexParticle;
                 
                 vertexParticle.cloth = this;
                 vertexParticle.cellX = (uint)cellX;
@@ -99,10 +102,16 @@ public class Cloth : MonoBehaviour
             particle.leftTop     = GetSurroundingParticle(-1, 1);
         }
 
+        //Set the pinned Joints
+        for (int i = 0; i < width + 1; i++)
+        {
+            particles[i].pinned = true;
+        }
+
         //Set to mesh
         mesh.vertices = verticies;
+        mesh.uv = uvs;
         mesh.triangles = indices;
-        mesh.RecalculateNormals();
     }
 
     void Start()
@@ -125,5 +134,6 @@ public class Cloth : MonoBehaviour
 
         mesh.vertices = vertices;
         mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
     }
 }
