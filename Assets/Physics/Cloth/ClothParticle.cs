@@ -1,9 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using Unity.VisualScripting;
 using UnityEngine;
-using UnityEngine.Scripting;
 
 public class ClothParticle : MonoBehaviour
 {
@@ -15,13 +13,11 @@ public class ClothParticle : MonoBehaviour
     [Header("Physics")]
     Vector3 prevPosition;
     Vector3 acceleration;
-    Vector3 impulse;
     public float mass = 1.0f;
     [Range(0.0f, 1.0f)] public float damping = 0.1f;
     public float gravityScale = 1.0f;
-    public float spring = 0.6f;
-    public float restDistance = 0.3f;
-    public float maxDistance = 0.3f;
+    public float spring = 1.0f;
+    float shearRestDistance;
 
     [Header("Constraints")]
     public bool pinned = false;
@@ -38,80 +34,104 @@ public class ClothParticle : MonoBehaviour
     {
         prevPosition = transform.position;
         vertexIndex = cloth.GetVertexIndex((int)cellX, (int)cellY);
+        shearRestDistance = Mathf.Sqrt(Mathf.Pow(cloth.GetCellSize().x, 2.0f) + Mathf.Pow(cloth.GetCellSize().y, 2.0f));
     }
 
     void FixedUpdate()
     {
         //Check whether there are no particles this particle is joined to. If so delete it.
-        if (!top && !topRight && !right && !bottomRight && !bottom && !bottomLeft && !left && !leftTop)
         {
-            Destroy(gameObject);
-            return;
+            int constraintCount = 0;
+            constraintCount += top ? 1 : 0;
+            constraintCount += topRight ? 1 : 0;
+            constraintCount += right ? 1 : 0;
+            constraintCount += bottomRight ? 1 : 0;
+            constraintCount += bottom ? 1 : 0;
+            constraintCount += bottomLeft ? 1 : 0;
+            constraintCount += left ? 1 : 0;
+            constraintCount += leftTop ? 1 : 0;
+
+            if (constraintCount < 2)
+            {
+                Destroy(gameObject);
+                return;
+            }
         }
 
         //Apply constraints
-        void asdsd(ClothParticle _otherParticle, bool sss = false)
+        void ApplyParticleConstraint(ClothParticle _a, ClothParticle _b, float _restDistance)
         {
-            if (_otherParticle == null) return;
+            if (_b == null || _a == null || _a == _b) return;
 
-            //Get the vector from this particle to the other particle
-            Vector3 delta = transform.position - _otherParticle.transform.position;
+            Vector3 delta = _b.transform.position - _a.transform.position;
+            Vector3 springForce = delta * spring * (1.0f - (_restDistance / delta.magnitude));
             
-            //Force the particle to be a fixed max distance from each other
-            if (delta.magnitude > maxDistance && !pinned && sss)
-            {
-                transform.position = new Vector3(transform.position.x, (_otherParticle.transform.position + (delta.normalized * maxDistance)).y, transform.position.z);
-            }
-
-
-            //Get how far this particle is from rest position
-            float difference = restDistance - delta.magnitude;
-
-            float inverseMass = 1.0f / mass;
-            float inverseOtherMass = 1.0f / _otherParticle.mass;
-
-            ApplyForce(delta.normalized * spring * (restDistance - delta.magnitude));
-            
-            
-            //_otherParticle.ApplyForce(-delta.normalized * spring * (restDistance - delta.magnitude));
-            //ApplyForce(delta.normalized * (1/(inverseMass + inverseOtherMass)) * spring * difference);
-            //_otherParticle.ApplyForce(-delta.normalized * (1/(inverseMass + inverseOtherMass)) * spring * difference);
+            _a.ApplyForce( (springForce/2.0f) * (_b.pinned ? 2.0f : 1.0f) * mass);
+            _b.ApplyForce(-(springForce/2.0f) * (_a.pinned ? 2.0f : 1.0f) * mass);
         }
 
-        asdsd(top, true);
-        asdsd(right);
-        asdsd(bottom);
-        asdsd(left);
+        //Apply Stretch Constraint
+        ApplyParticleConstraint(this, right,  cloth.GetCellSize().x);
+        ApplyParticleConstraint(this, bottom, cloth.GetCellSize().y);
+        
+        //Apply Shear Constraint
+        ApplyParticleConstraint(this, bottomRight, shearRestDistance);
+        ApplyParticleConstraint(this, bottomLeft,  shearRestDistance);
+
+        //Apply Bend Constraint
+        ApplyParticleConstraint(left, right,  cloth.GetCellSize().x * 2.0f);
+        ApplyParticleConstraint(top,  bottom, cloth.GetCellSize().y * 2.0f);
+        ApplyParticleConstraint(leftTop,  bottomRight, shearRestDistance * 2.0f);
+        ApplyParticleConstraint(topRight, bottomLeft,  shearRestDistance * 2.0f);
 
         //Ignore physics if pinned
         if (pinned) return;
 
         //Apply self collision
-        foreach(ClothParticle particle in cloth.particles)
-        {
-            if (particle == this) continue;
-            if (particle == null) continue;
-        
-            Vector3 particleDifference = particle.transform.position - transform.position;
-            if (particleDifference.magnitude > 0.1f) continue;
-            
-            ApplyImpulse(particleDifference/2.0f);
-            particle.ApplyImpulse(-particleDifference/2.0f);
-        }
+        //foreach(ClothParticle particle in cloth.particles)
+        //{
+        //    if (particle == this) continue;
+        //    if (particle == null) continue;
+        //
+        //    Vector3 particleDifference = particle.transform.position - transform.position;
+        //    if (particleDifference.magnitude > 0.1f) continue;
+        //
+        //    transform.position += particleDifference/2.0f;
+        //    particle.transform.position += -particleDifference/2.0f;
+        //}
 
-        //Collision With ground
-        if (transform.position.y < 0) transform.position = new Vector3(transform.position.x, 0.0f, transform.position.z);
+        //Collision with ground
+        float distanceToGround = 0.01f;
+        if (transform.position.y < distanceToGround) transform.position = new Vector3(transform.position.x, distanceToGround, transform.position.z);
+
+        //Collision with sphere
+        SphereCollision[] spheres = FindObjectsOfType<SphereCollision>();
+        foreach (SphereCollision sphere in spheres)
+        {
+            float distanceToSphere = 0.1f;
+
+            //Get the vector from the sphere to the particle
+            Vector3 delta = transform.position - sphere.transform.position;
+            
+            //If the particle is outside of the sphere, move to the next partcile
+            if (delta.magnitude > sphere.radius+distanceToSphere) continue;
+            transform.position += delta.normalized * (sphere.radius + distanceToSphere - delta.magnitude);
+        }
 
         //Apply gravity
         ApplyForce(Physics.gravity * gravityScale * mass);
-        //ApplyForce(Vector3.forward * 2.0f);
+
+        //Tear cloth if too much force is applied to it
+        if (acceleration.magnitude > 100.0f)
+        {
+            Destroy(gameObject);
+            return;
+        }
 
         //Apply verlet integration
-        Vector3 velocity = transform.position - prevPosition;
+        transform.position += ((1.0f - damping) * (transform.position - prevPosition)) + (acceleration * Time.fixedDeltaTime);
         prevPosition = transform.position;
-        transform.position += ((1.0f - damping) * velocity) + impulse + (acceleration * Time.fixedDeltaTime);
         acceleration = Vector3.zero;
-        impulse = Vector3.zero;
     }
 
     void OnDestroy()
@@ -157,11 +177,5 @@ public class ClothParticle : MonoBehaviour
     {
         if (pinned) return;
         acceleration += _force / mass;
-    }
-
-    public void ApplyImpulse(Vector3 _impulse)
-    {
-        if (pinned) return;
-        impulse += _impulse / mass;
     }
 }
