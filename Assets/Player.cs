@@ -33,7 +33,7 @@ public class Player : MonoBehaviour
             }
         }
 
-        //------------------------------------------------
+        //Disable movement if the cursor is not locked
         if (Cursor.lockState != CursorLockMode.Locked) return;
 
         //Move Camera

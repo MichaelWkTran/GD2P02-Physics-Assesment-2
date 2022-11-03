@@ -2,21 +2,25 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-[RequireComponent(typeof(MeshRenderer), typeof(MeshFilter))]
+[RequireComponent(typeof(MeshRenderer), typeof(MeshFilter), typeof(MeshCollider))]
 public class Cloth : MonoBehaviour
 {
     [SerializeField] uint width;
     [SerializeField] uint height;
     [SerializeField] Vector2 cellSize;
+    public float tearForce;
+    [HideInInspector] public bool clearing;
 
     [Header("Physics")]
+    public uint timeStep = 1;
     public float mass = 1.0f;
     [Range(0.0f, 1.0f)] public float damping = 0.1f;
     public float gravityScale = 1.0f;
     public float spring = 1.0f;
+    public float collisionDistance = 0.1f;
 
     public ClothParticle[] particles;
-    [HideInInspector] public Mesh mesh;
+    [HideInInspector] public Mesh mesh { get; private set; }
 
     void Start()
     {
@@ -25,10 +29,18 @@ public class Cloth : MonoBehaviour
         GenerateMesh();
     }
 
-    void Update()
+    void FixedUpdate()
     {
-        Vector3[] vertices = mesh.vertices;
+        //Update cloth particle physics
+        for (uint i = 0; i < timeStep; i++)
+            foreach (ClothParticle particle in particles)
+            {
+                if (particle == null) continue;
+                particle.ParticleUpdate();
+            }        
 
+        //Update cloth mesh
+        Vector3[] vertices = mesh.vertices;
         foreach (ClothParticle particle in particles)
         {
             if (particle == null) continue;
@@ -38,48 +50,26 @@ public class Cloth : MonoBehaviour
         mesh.vertices = vertices;
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
-    }
-
-    public int GetVertexIndex(int _cellX, int _cellY)
-    {
-        return (_cellY * ((int)width + 1)) + _cellX;
-    }
-
-    public void GetCellPos(int _vertexIndex, out int _cellX, out int _cellY)
-    {
-        _cellY = (int)(_vertexIndex / (width + 1.0f));
-        _cellX = _vertexIndex - _cellY;
-    }
-
-    public Vector2 GetCellSize()
-    {
-        return cellSize;
+        GetComponent<MeshCollider>().sharedMesh = mesh;
     }
 
     public void GenerateMesh()
     {
+        //Destroy Particles
+        clearing = true;
+        foreach (Transform child in transform) Destroy(child.gameObject);
+        clearing = false;
+
         Vector3[] verticies = new Vector3[(width + 1) * (height + 1)];
         Vector2[] uvs = new Vector2[(width + 1) * (height + 1)];
         int[] indices = new int[width * height * 6];
-
-        //Destroy Particles
-        //{
-        //    List<Transform> children = new List<Transform>();
-        //    foreach(Transform child in transform) children.Add(child);
-        //
-        //    foreach (Transform child in children)
-        //        Destroy(child.gameObject);
-        //}
-
-        foreach (ClothParticle particle in particles)
-            Destroy(particle.gameObject);
-
+        
         //Reset particles array size
         particles = new ClothParticle[verticies.Length];
 
         //Set the vertices of the mesh
-        for (int cellY = 0; cellY < height + 1; cellY++)
-            for (int cellX = 0; cellX < width + 1; cellX++)
+        for (int cellY = 0; cellY < height+1; cellY++)
+            for (int cellX = 0; cellX < width+1; cellX++)
             {
                 int vertexIndex = GetVertexIndex(cellX, cellY);
 
@@ -101,10 +91,6 @@ public class Cloth : MonoBehaviour
                 vertexParticle.cloth = this;
                 vertexParticle.cellX = (uint)cellX;
                 vertexParticle.cellY = (uint)cellY;
-                vertexParticle.mass = mass;
-                vertexParticle.damping = damping;
-                vertexParticle.gravityScale = gravityScale;
-                vertexParticle.spring = spring;
             }
 
         //Set the indices of the mesh
@@ -112,13 +98,13 @@ public class Cloth : MonoBehaviour
         for (int cellY = 0; cellY < height; cellY++)
             for (int cellX = 0; cellX < width; cellX++)
             {
-                indices[index] = GetVertexIndex(cellX, cellY);
-                indices[index + 1] = GetVertexIndex(cellX + 1, cellY);
-                indices[index + 2] = GetVertexIndex(cellX, cellY + 1);
+                indices[index]   = GetVertexIndex(cellX,   cellY);
+                indices[index+1] = GetVertexIndex(cellX+1, cellY);
+                indices[index+2] = GetVertexIndex(cellX,   cellY+1);
 
-                indices[index + 3] = GetVertexIndex(cellX, cellY + 1);
-                indices[index + 4] = GetVertexIndex(cellX + 1, cellY);
-                indices[index + 5] = GetVertexIndex(cellX + 1, cellY + 1);
+                indices[index+3] = GetVertexIndex(cellX,   cellY+1);
+                indices[index+4] = GetVertexIndex(cellX+1, cellY);
+                indices[index+5] = GetVertexIndex(cellX+1, cellY+1);
 
                 index += 6U;
             }
@@ -128,22 +114,22 @@ public class Cloth : MonoBehaviour
         {
             ClothParticle GetSurroundingParticle(int _cellOffsetX, int _cellOffsetY)
             {
-                if (particle.cellX + _cellOffsetX < 0) return null;
-                if (particle.cellX + _cellOffsetX > width) return null;
-                if (particle.cellY + _cellOffsetY < 0) return null;
+                if (particle.cellX + _cellOffsetX < 0)      return null;
+                if (particle.cellX + _cellOffsetX > width)  return null;
+                if (particle.cellY + _cellOffsetY < 0)      return null;
                 if (particle.cellY + _cellOffsetY > height) return null;
 
                 return particles[GetVertexIndex((int)particle.cellX + _cellOffsetX, (int)particle.cellY + _cellOffsetY)];
             }
 
-            particle.top = GetSurroundingParticle(0, -1);
-            particle.topRight = GetSurroundingParticle(1, -1);
-            particle.right = GetSurroundingParticle(1, 0);
+            particle.top =         GetSurroundingParticle(0, -1);
+            particle.topRight =    GetSurroundingParticle(1, -1);
+            particle.right =       GetSurroundingParticle(1, 0);
             particle.bottomRight = GetSurroundingParticle(1, 1);
-            particle.bottom = GetSurroundingParticle(0, 1);
-            particle.bottomLeft = GetSurroundingParticle(-1, 1);
-            particle.left = GetSurroundingParticle(-1, 0);
-            particle.leftTop = GetSurroundingParticle(-1, -1);
+            particle.bottom =      GetSurroundingParticle(0, 1);
+            particle.bottomLeft =  GetSurroundingParticle(-1, 1);
+            particle.left =        GetSurroundingParticle(-1, 0);
+            particle.leftTop =     GetSurroundingParticle(-1, -1);
         }
 
         //Set the pinned Joints
@@ -156,5 +142,22 @@ public class Cloth : MonoBehaviour
         mesh.vertices = verticies;
         mesh.uv = uvs;
         mesh.triangles = indices;
+    }
+
+    //Get Set methods
+    public int GetVertexIndex(int _cellX, int _cellY)
+    {
+        return (_cellY * ((int)width + 1)) + _cellX;
+    }
+
+    public void GetCellPos(int _vertexIndex, out int _cellX, out int _cellY)
+    {
+        _cellY = (int)(_vertexIndex / (width + 1.0f));
+        _cellX = _vertexIndex - _cellY;
+    }
+
+    public Vector2 GetCellSize()
+    {
+        return cellSize;
     }
 }
