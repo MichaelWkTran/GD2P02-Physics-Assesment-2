@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using Unity.VisualScripting.Dependencies.NCalc;
+using UnityEditor;
 using UnityEngine;
 
 public class ClothParticle : MonoBehaviour
@@ -36,23 +37,20 @@ public class ClothParticle : MonoBehaviour
         shearRestDistance = Mathf.Sqrt(Mathf.Pow(cloth.GetCellSize().x, 2.0f) + Mathf.Pow(cloth.GetCellSize().y, 2.0f));
     }
 
-    void OnDestroy()
+    public void Destroy()
     {
-        if (cloth.clearing) return;
+        List<int> verticiesToCheck = new List<int>();
 
         //Find the indicies to delete
-        List<int> oldIndices = cloth.mesh.triangles.ToList();
-        for (int index = 0; index < oldIndices.Count; index += 3)
+        List<int> indices = cloth.m_mesh.triangles.ToList();
+        for (int index = 0; index < indices.Count; index += 3)
         {
             //Check whether the triangle contains this vertex
             bool destroyedIndexFound = false;
             for (int triangleIndex = 0; triangleIndex < 3; triangleIndex++)
             {
                 //Skip checking triangle if it does not contain this vertex
-                if (vertexIndex != oldIndices[index + triangleIndex]) continue;
-
-                //Disconnect all constraints in this triangle
-
+                if (vertexIndex != indices[index + triangleIndex]) continue;
 
                 //Mark the indices of the triangle to be deleted if it contains this vertex
                 //and skip checking the triangle
@@ -64,28 +62,25 @@ public class ClothParticle : MonoBehaviour
             //then skip this triangle
             if (!destroyedIndexFound) continue;
 
-            //Set the index to -1 to indicate that it is to be destroyed
-            for (int triangleIndex = 0; triangleIndex < 3; triangleIndex++)
-                oldIndices[index + triangleIndex] = -1;
+            //Remove triangle
+            verticiesToCheck.Add(indices[index]);
+            verticiesToCheck.Add(indices[index + 1]);
+            verticiesToCheck.Add(indices[index + 2]);
+            indices.RemoveAt(index);
+            indices.RemoveAt(index);
+            indices.RemoveAt(index);
+            index -= 3;
         }
 
-        //Create a new list in indices that include all indices from the previous list
-        //excluding the ones marked for deletion.
-        List<int> indices = new List<int>();
-        for (int index = 0; index < oldIndices.Count; index++)
+        cloth.m_mesh.triangles = indices.ToArray();
+        foreach (int vertex in verticiesToCheck)
         {
-            if (oldIndices[index] == -1) continue;
-            indices.Add(oldIndices[index]);
-        }
-
-        //Set the new indices to the mesh
-        cloth.mesh.triangles = indices.ToArray();
-
-        foreach(ClothParticle particle in cloth.particles)
-        {
+            ClothParticle particle = cloth.m_particles[vertex];
             if (particle == this || particle == null) continue;
             particle.CheckToBeDeleted();
         }
+
+        Destroy(gameObject);
     }
 
     public void ParticleUpdate()
@@ -96,10 +91,10 @@ public class ClothParticle : MonoBehaviour
             if (_b == null || _a == null || _a == _b) return;
 
             Vector3 delta = _b.transform.position - _a.transform.position;
-            Vector3 springForce = delta * cloth.spring * (1.0f - (_restDistance / delta.magnitude));
+            Vector3 springForce = delta * cloth.m_spring * (1.0f - (_restDistance / delta.magnitude));
 
-            _a.ApplyForce((springForce/2.0f) * (_b.pinned ? 2.0f : 1.0f) * cloth.mass);
-            _b.ApplyForce(-(springForce/2.0f) * (_a.pinned ? 2.0f : 1.0f) * cloth.mass);
+            _a.ApplyForce((springForce/2.0f) * (_b.pinned ? 2.0f : 1.0f) * cloth.m_mass);
+            _b.ApplyForce(-(springForce/2.0f) * (_a.pinned ? 2.0f : 1.0f) * cloth.m_mass);
         }
 
         //Apply Stretch Constraint
@@ -145,29 +140,21 @@ public class ClothParticle : MonoBehaviour
             Vector3 delta = transform.position - sphere.transform.position;
 
             //If the particle is outside of the sphere, move to the next partcile
-            if (delta.magnitude >= sphere.radius + cloth.collisionDistance) continue;
-            transform.position += delta.normalized * (sphere.radius + cloth.collisionDistance - delta.magnitude);
+            if (delta.magnitude >= sphere.radius + cloth.m_collisionDistance) continue;
+            transform.position += delta.normalized * (sphere.radius + cloth.m_collisionDistance - delta.magnitude);
         }
 
         //Apply gravity
-        ApplyForce(Physics.gravity * cloth.gravityScale * cloth.mass);
+        ApplyForce(Physics.gravity * cloth.m_gravityScale * cloth.m_mass);
 
         //Tear cloth if too much force is applied to it
-        //if (acceleration.magnitude > cloth.tearForce) Destroy(gameObject);
+        if (acceleration.magnitude > cloth.m_tearForce) Destroy();
         
         //Apply verlet integration
-        transform.position += (((1.0f - cloth.damping) * (transform.position - prevPosition)) + (acceleration * Time.fixedDeltaTime))/cloth.timeStep;
+        transform.position += (((1.0f - cloth.m_damping) * (transform.position - prevPosition)) + (acceleration * Time.fixedDeltaTime))/cloth.m_timeStep;
         prevPosition = transform.position;
         acceleration = Vector3.zero;
     }
-
-    public class Pair<T, U>
-    {
-        public Pair(T first, U second) { First = first; Second = second; }
-
-        public T First { get; set; }
-        public U Second { get; set; }
-    };
 
     public void CheckToBeDeleted()
     {
@@ -189,14 +176,15 @@ public class ClothParticle : MonoBehaviour
 
             for (int i = 0; i < 3; i++)
             {
-                if (!a && cloth.mesh.triangles[_triangleIndex + i] == vertexIndex) a = true;
-                else if (cloth.mesh.triangles[_triangleIndex + i] == _constraint.vertexIndex) s = true;
+                if (i == 2 && !a && !s) return;
+                if (!a && cloth.m_mesh.triangles[_triangleIndex + i] == vertexIndex) a = true;
+                else if (cloth.m_mesh.triangles[_triangleIndex + i] == _constraint.vertexIndex) s = true;
 
                 if (a && s) { _constraintFound = true; return; }
             }
         }
 
-        for (int triangleIndex = 0; triangleIndex < cloth.mesh.triangles.Length; triangleIndex += 3)
+        for (int triangleIndex = 0; triangleIndex < cloth.m_mesh.triangles.Length; triangleIndex += 3)
         {
             sssss(ref top,         ref topFound,         triangleIndex);
             sssss(ref topRight,    ref topRightFound,    triangleIndex);
@@ -218,7 +206,7 @@ public class ClothParticle : MonoBehaviour
         if (!leftTopFound) leftTop = null;
 
         //Check whether there are any triangles in the mesh that uses this vertex
-        foreach (int index in cloth.mesh.triangles)
+        foreach (int index in cloth.m_mesh.triangles)
             if (index == vertexIndex) return;
 
         //If there are no triangles that uses this vertex, destroy it
@@ -228,6 +216,6 @@ public class ClothParticle : MonoBehaviour
     public void ApplyForce(Vector3 _force)
     {
         if (pinned) return;
-        acceleration += _force / cloth.mass;
+        acceleration += _force / cloth.m_mass;
     }
 }

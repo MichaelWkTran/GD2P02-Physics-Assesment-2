@@ -4,11 +4,11 @@ using UnityEngine;
 
 public class Player : MonoBehaviour
 {
-    [SerializeField] float moveSpeed;
-    [SerializeField] Vector2 rotationSensitivity;
-    [SerializeField] float minRotationY;
-    [SerializeField] float maxRotationY; 
-    Vector2 rotation;
+    [SerializeField] float m_moveSpeed;
+    [SerializeField] Vector2 m_rotationSensitivity;
+    [SerializeField] float m_minRotationY;
+    [SerializeField] float m_maxRotationY; 
+    Vector2 m_rotation;
     
     void Start()
     {
@@ -37,17 +37,17 @@ public class Player : MonoBehaviour
         if (Cursor.lockState != CursorLockMode.Locked) return;
 
         //Move Camera
-        transform.position += Input.GetAxisRaw("Horizontal") * moveSpeed * transform.right * Time.deltaTime;
-        transform.position += Input.GetAxisRaw("Vertical") * moveSpeed * transform.forward * Time.deltaTime;
-        transform.position += Input.GetAxisRaw("Depth") * moveSpeed * Vector3.up * Time.deltaTime;
+        transform.position += Input.GetAxisRaw("Horizontal") * m_moveSpeed * transform.right * Time.deltaTime;
+        transform.position += Input.GetAxisRaw("Vertical") * m_moveSpeed * transform.forward * Time.deltaTime;
+        transform.position += Input.GetAxisRaw("Depth") * m_moveSpeed * Vector3.up * Time.deltaTime;
 
         //Rotate Camera
-        rotation.x += Input.GetAxisRaw("Mouse X") * rotationSensitivity.x;
-        rotation.x = Mathf.Repeat(rotation.x, 360.0f);
+        m_rotation.x += Input.GetAxisRaw("Mouse X") * m_rotationSensitivity.x;
+        m_rotation.x = Mathf.Repeat(m_rotation.x, 360.0f);
 
-        rotation.y += Input.GetAxisRaw("Mouse Y") * rotationSensitivity.y;
-        Mathf.Clamp(rotation.y, minRotationY, maxRotationY);
+        m_rotation.y += Input.GetAxisRaw("Mouse Y") * m_rotationSensitivity.y;
+        Mathf.Clamp(m_rotation.y, m_minRotationY, m_maxRotationY);
 
-        transform.rotation = Quaternion.Euler(rotation.y, rotation.x, 0.0f);
+        transform.rotation = Quaternion.Euler(m_rotation.y, m_rotation.x, 0.0f);
     }
 }
