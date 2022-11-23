@@ -1,13 +1,22 @@
-using System.Collections;
-using System.Collections.Generic;
+// Bachelor of Software Engineering
+// Media Design School
+// Auckland
+// New Zealand
+// (c) 2022 Media Design School
+//
+// File Name: Cloth.cs
+// Description: Cloth implementation file
+// Authors: Michael Wai Kit Tran
+
 using UnityEngine;
+using static UnityEngine.ParticleSystem;
 
 [RequireComponent(typeof(MeshRenderer), typeof(MeshFilter), typeof(MeshCollider))]
 public class Cloth : MonoBehaviour
 {
-    [SerializeField] uint m_width;
-    [SerializeField] uint m_height;
-    [SerializeField] Vector2 m_cellSize;
+    public uint m_width;
+    public uint m_height;
+    public Vector2 m_cellSize;
     public float m_tearForce;
 
     [Header("Physics")]
@@ -18,9 +27,16 @@ public class Cloth : MonoBehaviour
     public float m_spring = 1.0f;
     public float m_collisionDistance = 0.1f;
 
+    [Header("Miscellaneous")]
+    public ParticleSystem m_fireParticleSystem;
+    public float m_fireGrowthRate;
+
     public ClothParticle[] m_particles;
     [HideInInspector] public Mesh m_mesh { get; private set; }
 
+    //------------------------------------------------------------------------------------------------------------------------
+    // Procedure: Start()
+    //	 Purpose: Initalise cloth mesh
     void Start()
     {
         m_mesh = GetComponent<MeshFilter>().sharedMesh = new Mesh();
@@ -28,6 +44,9 @@ public class Cloth : MonoBehaviour
         GenerateMesh();
     }
 
+    //------------------------------------------------------------------------------------------------------------------------
+    // Procedure: FixedUpdate()
+    //	 Purpose: Update the cloth and its particles every time step
     void FixedUpdate()
     {
         //Update cloth particle physics
@@ -52,6 +71,9 @@ public class Cloth : MonoBehaviour
         GetComponent<MeshCollider>().sharedMesh = m_mesh;
     }
 
+    //------------------------------------------------------------------------------------------------------------------------
+    // Procedure: GenerateMesh()
+    //	 Purpose: Generates the mesh for the cloth
     public void GenerateMesh()
     {
         //Destroy Particles
@@ -142,19 +164,21 @@ public class Cloth : MonoBehaviour
     }
 
     //Get Set methods
+    //------------------------------------------------------------------------------------------------------------------------
+    // Procedure: GetVertexIndex()
+    //	 Purpose: Get the index of a particle to be used by the variable, m_particles. _cellX and _cellY are the positions of the vertex in the cloth
+    //	 Returns: Get the index of a particle to be used by the variable, m_particles. 
     public int GetVertexIndex(int _cellX, int _cellY)
     {
         return (_cellY * ((int)m_width + 1)) + _cellX;
     }
 
+    //------------------------------------------------------------------------------------------------------------------------
+    // Procedure: GetVertexIndex()
+    //	 Purpose: Get the positions of the vertex in the cloth, _cellX and _cellY, by using its particle index
     public void GetCellPos(int _vertexIndex, out int _cellX, out int _cellY)
     {
         _cellY = (int)(_vertexIndex / (m_width + 1.0f));
         _cellX = _vertexIndex - _cellY;
-    }
-
-    public Vector2 GetCellSize()
-    {
-        return m_cellSize;
     }
 }

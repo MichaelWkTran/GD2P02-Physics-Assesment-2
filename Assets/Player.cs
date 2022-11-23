@@ -1,3 +1,13 @@
+// Bachelor of Software Engineering
+// Media Design School
+// Auckland
+// New Zealand
+// (c) 2022 Media Design School
+//
+// File Name: Player.cs
+// Description: Player implementation file
+// Authors: Michael Wai Kit Tran
+
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -9,13 +19,19 @@ public class Player : MonoBehaviour
     [SerializeField] float m_minRotationY;
     [SerializeField] float m_maxRotationY; 
     Vector2 m_rotation;
-    
+
+    //------------------------------------------------------------------------------------------------------------------------
+    // Procedure: Start()
+    //	 Purpose: Locks cursor
     void Start()
     {
         Cursor.visible = false;
         Cursor.lockState = CursorLockMode.Locked;
     }
 
+    //------------------------------------------------------------------------------------------------------------------------
+    // Procedure: Update()
+    //	 Purpose: Move and rotate camera
     void Update()
     {
         //Show or hide cursor

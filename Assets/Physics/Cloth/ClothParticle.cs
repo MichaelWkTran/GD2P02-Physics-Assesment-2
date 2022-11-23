@@ -1,11 +1,18 @@
-using System;
-using System.Collections;
+// Bachelor of Software Engineering
+// Media Design School
+// Auckland
+// New Zealand
+// (c) 2022 Media Design School
+//
+// File Name: ClothParticle.cs
+// Description: ClothParticle implementation file
+// Authors: Michael Wai Kit Tran
+
 using System.Collections.Generic;
-using System.Data;
 using System.Linq;
-using Unity.VisualScripting.Dependencies.NCalc;
-using UnityEditor;
+using Unity.VisualScripting;
 using UnityEngine;
+using static UnityEngine.ParticleSystem;
 
 public class ClothParticle : MonoBehaviour
 {
@@ -30,13 +37,52 @@ public class ClothParticle : MonoBehaviour
     public ClothParticle left;
     public ClothParticle leftTop;
 
+    [Header("Miscellaneous")]
+    public float fireFactor;
+
+    //------------------------------------------------------------------------------------------------------------------------
+    // Procedure: Start()
+    //	 Purpose: Sets up velvet intergration, get particle index, and sets shear rest distance for physics constraints
     void Start()
     {
         prevPosition = transform.position;
         vertexIndex = cloth.GetVertexIndex((int)cellX, (int)cellY);
-        shearRestDistance = Mathf.Sqrt(Mathf.Pow(cloth.GetCellSize().x, 2.0f) + Mathf.Pow(cloth.GetCellSize().y, 2.0f));
+        shearRestDistance = Mathf.Sqrt(Mathf.Pow(cloth.m_cellSize.x, 2.0f) + Mathf.Pow(cloth.m_cellSize.y, 2.0f));
     }
 
+    void Update()
+    {
+        if (fireFactor > 1) { Destroy(); return; }
+
+        float GetFireGrowth(ClothParticle _particle)
+        {
+            if (_particle == null) return 0;
+            return cloth.m_fireGrowthRate * (_particle.fireFactor / 1.0f);
+        }
+
+        fireFactor += GetFireGrowth(this) * Time.deltaTime;
+        fireFactor += GetFireGrowth(top) * Time.deltaTime;
+        fireFactor += GetFireGrowth(topRight) * Time.deltaTime;
+        fireFactor += GetFireGrowth(right) * Time.deltaTime;
+        fireFactor += GetFireGrowth(bottomRight) * Time.deltaTime;
+        fireFactor += GetFireGrowth(bottom) * Time.deltaTime;
+        fireFactor += GetFireGrowth(bottomLeft) * Time.deltaTime;
+        fireFactor += GetFireGrowth(left) * Time.deltaTime;
+        fireFactor += GetFireGrowth(leftTop) * Time.deltaTime;
+
+        if (fireFactor <= 0.5f) return;
+        EmitParams emitParams = new EmitParams()
+        {
+            position = transform.position
+        };
+
+
+        cloth.m_fireParticleSystem.Emit(emitParams, (int)(cloth.m_fireParticleSystem.emission.rateOverTime.Evaluate(0) * Time.deltaTime));
+    }
+
+    //------------------------------------------------------------------------------------------------------------------------
+    // Procedure: Destroy()
+    //	 Purpose: Destroys the particle, the triangle it is apart of, and disconnects constraints
     public void Destroy()
     {
         List<int> verticiesToCheck = new List<int>();
@@ -72,7 +118,11 @@ public class ClothParticle : MonoBehaviour
             index -= 3;
         }
 
+        //Set the final traingles of the mesh
         cloth.m_mesh.triangles = indices.ToArray();
+
+        //Loop through all the verticies of deleted triangles
+        //and check whether they should be deleted or not
         foreach (int vertex in verticiesToCheck)
         {
             ClothParticle particle = cloth.m_particles[vertex];
@@ -80,9 +130,13 @@ public class ClothParticle : MonoBehaviour
             particle.CheckToBeDeleted();
         }
 
+        //Destroy this particles
         Destroy(gameObject);
     }
 
+    //------------------------------------------------------------------------------------------------------------------------
+    // Procedure: ParticleUpdate()
+    //	 Purpose: Update the physics of the particles
     public void ParticleUpdate()
     {
         //Apply constraints
@@ -98,16 +152,16 @@ public class ClothParticle : MonoBehaviour
         }
 
         //Apply Stretch Constraint
-        ApplyParticleConstraint(this, right, cloth.GetCellSize().x);
-        ApplyParticleConstraint(this, bottom, cloth.GetCellSize().y);
+        ApplyParticleConstraint(this, right, cloth.m_cellSize.x);
+        ApplyParticleConstraint(this, bottom, cloth.m_cellSize.y);
 
         //Apply Shear Constraint
         ApplyParticleConstraint(this, bottomRight, shearRestDistance);
         ApplyParticleConstraint(this, bottomLeft, shearRestDistance);
 
         //Apply Bend Constraint
-        ApplyParticleConstraint(left, right, cloth.GetCellSize().x * 2.0f);
-        ApplyParticleConstraint(top, bottom, cloth.GetCellSize().y * 2.0f);
+        ApplyParticleConstraint(left, right, cloth.m_cellSize.x * 2.0f);
+        ApplyParticleConstraint(top, bottom, cloth.m_cellSize.y * 2.0f);
         ApplyParticleConstraint(leftTop, bottomRight, shearRestDistance * 2.0f);
         ApplyParticleConstraint(topRight, bottomLeft, shearRestDistance * 2.0f);
 
@@ -144,6 +198,33 @@ public class ClothParticle : MonoBehaviour
             transform.position += delta.normalized * (sphere.radius + cloth.m_collisionDistance - delta.magnitude);
         }
 
+        //Collision with capsule
+        CapsuleCollision[] capsules = FindObjectsOfType<CapsuleCollision>();
+        foreach (CapsuleCollision capsule in capsules)
+        {
+            //Get capsule start and end points
+            Vector3 capsuleStart = capsule.GetGlobalStart();
+            Vector3 capsuleEnd = capsule.GetGlobalEnd();
+
+            //Get vector from capsule start to end
+            Vector3 capsuleVector = capsuleEnd - capsuleStart;
+
+            //Project the particle onto vector and calculate
+            float capsuleProjectionFactor = Vector3.Dot(transform.position - capsuleStart, capsuleVector);
+            capsuleProjectionFactor /= capsuleVector.magnitude;
+            capsuleProjectionFactor = Mathf.Clamp01(capsuleProjectionFactor);
+
+            //Calculate the position of the sphere in which the particle would collide with
+            Vector3 sphere = Vector3.Lerp(capsuleStart, capsuleEnd, capsuleProjectionFactor);
+            
+            //Get the vector from the sphere to the particle
+            Vector3 delta = transform.position - sphere;
+
+            //If the particle is outside of the sphere, move to the next partcile
+            if (delta.magnitude >= capsule.GetGlobalRadius() + cloth.m_collisionDistance) continue;
+            transform.position += delta.normalized * (capsule.GetGlobalRadius() + cloth.m_collisionDistance - delta.magnitude);
+        }
+
         //Apply gravity
         ApplyForce(Physics.gravity * cloth.m_gravityScale * cloth.m_mass);
 
@@ -156,6 +237,9 @@ public class ClothParticle : MonoBehaviour
         acceleration = Vector3.zero;
     }
 
+    //------------------------------------------------------------------------------------------------------------------------
+    // Procedure: CheckToBeDeleted()
+    //	 Purpose: Checks whether constraints attached to particle still exists are destroys the particle if it has no constriants
     public void CheckToBeDeleted()
     {
         bool topFound = false;
@@ -167,35 +251,44 @@ public class ClothParticle : MonoBehaviour
         bool leftFound = false;
         bool leftTopFound = false;
 
-        void sssss(ref ClothParticle _constraint, ref bool _constraintFound, int _triangleIndex)
+        //Check whether a constraint still exists in the cloth mesh
+        void CheckConstraintExists(ref ClothParticle _constraint, ref bool _constraintFound, int _triangleIndex)
         {
             if (_constraint == null || _constraintFound == true) return;
+            
+            bool thisParticleFound = false;
+            bool otherParticleFound = false;
 
-            bool a = false;
-            bool s = false;
-
+            //Loop through all verticies of the triangle
             for (int i = 0; i < 3; i++)
             {
-                if (i == 2 && !a && !s) return;
-                if (!a && cloth.m_mesh.triangles[_triangleIndex + i] == vertexIndex) a = true;
-                else if (cloth.m_mesh.triangles[_triangleIndex + i] == _constraint.vertexIndex) s = true;
+                //If a vertex of a possible edge has not been found after checking the second triangle vertex,
+                //no constraints are found
+                if (i == 2 && !thisParticleFound && !otherParticleFound) return;
+                
+                //Check whether the checked vertex is this particle or the particle it is constrained to
+                if (!thisParticleFound && cloth.m_mesh.triangles[_triangleIndex + i] == vertexIndex) thisParticleFound = true;
+                else if (cloth.m_mesh.triangles[_triangleIndex + i] == _constraint.vertexIndex) otherParticleFound = true;
 
-                if (a && s) { _constraintFound = true; return; }
+                //End function if the constaint exists
+                if (thisParticleFound && otherParticleFound) { _constraintFound = true; return; }
             }
         }
 
+        //Loop through mesh to find constraints in mesh
         for (int triangleIndex = 0; triangleIndex < cloth.m_mesh.triangles.Length; triangleIndex += 3)
         {
-            sssss(ref top,         ref topFound,         triangleIndex);
-            sssss(ref topRight,    ref topRightFound,    triangleIndex);
-            sssss(ref right,       ref rightFound,       triangleIndex);
-            sssss(ref bottomRight, ref bottomRightFound, triangleIndex);
-            sssss(ref bottom,      ref bottomFound,      triangleIndex);
-            sssss(ref bottomLeft,  ref bottomLeftFound,  triangleIndex);
-            sssss(ref left,        ref leftFound,        triangleIndex);
-            sssss(ref leftTop,     ref leftTopFound,     triangleIndex);
+            CheckConstraintExists(ref top,         ref topFound,         triangleIndex);
+            CheckConstraintExists(ref topRight,    ref topRightFound,    triangleIndex);
+            CheckConstraintExists(ref right,       ref rightFound,       triangleIndex);
+            CheckConstraintExists(ref bottomRight, ref bottomRightFound, triangleIndex);
+            CheckConstraintExists(ref bottom,      ref bottomFound,      triangleIndex);
+            CheckConstraintExists(ref bottomLeft,  ref bottomLeftFound,  triangleIndex);
+            CheckConstraintExists(ref left,        ref leftFound,        triangleIndex);
+            CheckConstraintExists(ref leftTop,     ref leftTopFound,     triangleIndex);
         }
 
+        //Remove constraints that do not exist in the mesh
         if (!topFound) top = null;
         if (!topRightFound) topRight = null;
         if (!rightFound) right = null;
@@ -213,6 +306,9 @@ public class ClothParticle : MonoBehaviour
         Destroy(gameObject);
     }
 
+    //------------------------------------------------------------------------------------------------------------------------
+    // Procedure: ApplyForce()
+    //	 Purpose: Apply forces to the particles
     public void ApplyForce(Vector3 _force)
     {
         if (pinned) return;
